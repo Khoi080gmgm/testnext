@@ -1,14 +1,18 @@
 import { GoogleGenAI, GenerateContentResponse } from "@google/genai";
 
-// ✅ Cách khuyên dùng: cấu hình API key trên Vercel (Project Settings → Environment Variables)
-//   Tên biến: NEXT_PUBLIC_GENAI_API_KEY
-const apiKey =
-  process.env.NEXT_PUBLIC_GENAI_API_KEY || ""; 
+// LẤY API KEY TỪ VERCEL (KHÔNG CẦN .env.local)
+const apiKey = import.meta.env.VITE_GEMINI_API_KEY as string | undefined;
 
-// ❌ Cách KHÔNG khuyến khích: ghi thẳng API key vào code
-// const apiKey = "YOUR_GOOGLE_GENAI_API_KEY_HERE";
+if (!apiKey) {
+  console.error("❌ Thiếu VITE_GEMINI_API_KEY. Hãy thêm API Key vào Environment Variables của Vercel!");
+}
 
-const ai = new GoogleGenAI({ apiKey });
+// Tạo client Gemini
+const ai = new GoogleGenAI({
+  apiKey: apiKey || "",
+});
+
+// ======================= ESSAY GENERATION =======================
 
 export const generateEssay = async (
   topic: string,
@@ -17,7 +21,7 @@ export const generateEssay = async (
   language: string
 ): Promise<string> => {
   if (!apiKey) {
-    return "Lỗi: Chưa cấu hình API Key. Vui lòng kiểm tra cài đặt trên Vercel (Environment Variables).";
+    return "Lỗi: Chưa cấu hình API Key. Hãy thêm vào Vercel → Environment Variables.";
   }
 
   const langMap: Record<string, string> = {
@@ -32,62 +36,56 @@ export const generateEssay = async (
   const langText = langMap[language] || "Tiếng Việt";
 
   const prompt = `
-    Hãy đóng vai một nhà văn chuyên nghiệp, viết một bài văn hoàn chỉnh bằng ${langText} về chủ đề: "${topic}".
-    
-    Yêu cầu cụ thể:
-    - Độ dài khoảng ${wordCount} từ (hoặc ký tự đối với tiếng Trung/Nhật).
+    Hãy đóng vai một nhà văn chuyên nghiệp, viết bài văn bằng ${langText} về chủ đề: "${topic}".
+
+    - Độ dài: khoảng ${wordCount} từ.
     - ${
       outline
-        ? `Dựa trên dàn ý chi tiết sau: ${outline}`
-        : "Hãy tự xây dựng dàn ý mạch lạc, sáng tạo và có chiều sâu."
+        ? `Dựa trên dàn ý sau: ${outline}`
+        : "Nếu không có dàn ý, hãy tự xây dựng bố cục logic."
     }
-    - Trình bày rõ ràng, chia đoạn hợp lý.
-    - Văn phong sang trọng, trôi chảy, giàu hình ảnh và cảm xúc.
-    - Không cần tiêu đề ở đầu, chỉ trả về nội dung chính của bài văn.
+    - Văn phong đẹp, mượt mà, sâu sắc.
+    - Chỉ trả về nội dung bài văn, không thêm mô tả thừa.
   `;
 
   try {
-    // Dùng gemini-2.5-flash để sinh văn bản nhanh
     const response: GenerateContentResponse = await ai.models.generateContent({
       model: "gemini-2.5-flash",
       contents: prompt,
     });
 
-    // Tuỳ SDK, có thể là response.text hoặc response.candidates[0].content...
-    // Ở đây giữ nguyên như bạn đang dùng
-    // @ts-ignore (nếu TypeScript kêu ca)
-    return response.text || "Không thể tạo nội dung. Vui lòng thử lại.";
+    return response.text || "Không thể tạo nội dung, vui lòng thử lại.";
   } catch (error) {
-    console.error("Error generating essay:", error);
-    return "Đã xảy ra lỗi khi kết nối với AI. Vui lòng thử lại sau.";
+    console.error("❌ Lỗi Gemini:", error);
+    return "Lỗi kết nối AI. Vui lòng thử lại sau.";
   }
 };
+
+// ======================= CHAT WITH AI =======================
 
 export const chatWithLiteraryExpert = async (
   history: { role: string; parts: { text: string }[] }[],
   message: string
 ): Promise<string> => {
   if (!apiKey) {
-    return "Lỗi: Chưa cấu hình API Key. Vui lòng kiểm tra cài đặt trên Vercel (Environment Variables).";
+    return "Lỗi: Thiếu API Key trên Vercel.";
   }
 
   try {
-    // Dùng gemini-3-pro-preview cho các câu hỏi phân tích văn học phức tạp
     const chat = ai.chats.create({
-      model: "gemini-3-pro-preview",
+      model: "gemini-2.5-flash",
       history: history,
       config: {
         systemInstruction:
-          "Bạn là một chuyên gia văn học uyên bác, am hiểu các tác phẩm văn học trong và ngoài nước. Hãy trả lời người dùng một cách tinh tế, sâu sắc nhưng vẫn thân thiện. Sử dụng tiếng Việt.",
+          "Bạn là một chuyên gia văn học uyên bác. Hãy trả lời tinh tế, sâu sắc, dễ hiểu. Ngôn ngữ: Tiếng Việt.",
       },
     });
 
     const result = await chat.sendMessage({ message });
 
-    // @ts-ignore (nếu TypeScript báo không có text)
-    return result.text || "Tôi không hiểu ý bạn, hãy nói rõ hơn nhé.";
+    return result.text || "Tôi chưa hiểu ý bạn, hãy nói rõ hơn nhé!";
   } catch (error) {
-    console.error("Error in chat:", error);
-    return "Xin lỗi, tôi đang gặp chút sự cố. Vui lòng thử lại sau.";
+    console.error("❌ Lỗi chat Gemini:", error);
+    return "Xin lỗi, tôi đang gặp sự cố. Bạn thử lại sau nhé!";
   }
 };
